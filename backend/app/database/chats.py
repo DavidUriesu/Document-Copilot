@@ -36,6 +36,19 @@ async def create_thread(
     return response.data[0]
 
 
+async def update_thread_title(
+    client: AsyncClient, thread_id: UUID, title: str
+) -> dict[str, Any]:
+    """Update the title of an authenticated user's thread."""
+    response = await (
+        client.table("chat_threads")
+        .update({"title": title, "updated_at": datetime.now(UTC).isoformat()})
+        .eq("id", str(thread_id))
+        .execute()
+    )
+    return response.data[0]
+
+
 async def get_thread_owner(client: AsyncClient, thread_id: UUID) -> UUID | None:
     """Look up ownership with a service-role client, bypassing RLS visibility."""
     response = await (

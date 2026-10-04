@@ -15,6 +15,10 @@ SearchLimit = Annotated[int, Field(ge=1, le=MAX_SEARCH_RESULTS)]
 NeighborWindow = Annotated[int, Field(ge=0, le=MAX_NEIGHBOR_WINDOW)]
 
 
+class RetrievalError(RuntimeError):
+    """Raised when a filing lookup cannot be completed."""
+
+
 async def search_filings(
     ctx: RunContext[DocumentAgentDeps],
     query: str,
@@ -32,17 +36,22 @@ async def search_filings(
     """
     if not 1 <= limit <= MAX_SEARCH_RESULTS:
         raise ValueError(f"limit must be between 1 and {MAX_SEARCH_RESULTS}")
-    passages = await ctx.deps.retriever.search(
-        query,
-        RetrievalFilters(
-            tickers=tuple(tickers or ()),
-            filing_types=tuple(filing_types or ()),
-            fiscal_year_from=start_year,
-            fiscal_year_to=end_year,
-        ),
-        limit=limit,
-    )
+    await ctx.deps.report_progress("searching")
+    try:
+        passages = await ctx.deps.retriever.search(
+            query,
+            RetrievalFilters(
+                tickers=tuple(tickers or ()),
+                filing_types=tuple(filing_types or ()),
+                fiscal_year_from=start_year,
+                fiscal_year_to=end_year,
+            ),
+            limit=limit,
+        )
+    except Exception as exc:
+        raise RetrievalError("Filing search failed") from exc
     ctx.deps.evidence.update((passage.chunk_id, passage) for passage in passages)
+    await ctx.deps.report_progress("drafting")
     return passages
 
 
@@ -53,6 +62,8 @@ async def read_chunk(
     passage = ctx.deps.evidence.get(chunk_id)
     if passage is None:
         raise ValueError("Search for a chunk before reading it")
+    await ctx.deps.report_progress("reading")
+    await ctx.deps.report_progress("drafting")
     return passage
 
 
@@ -66,6 +77,11 @@ async def read_surrounding_chunks(
         raise ValueError("Search for a chunk before expanding it")
     if not 0 <= window <= MAX_NEIGHBOR_WINDOW:
         raise ValueError(f"window must be between 0 and {MAX_NEIGHBOR_WINDOW}")
-    passages = await ctx.deps.retriever.read_surrounding_chunks(chunk_id, window)
+    await ctx.deps.report_progress("reading")
+    try:
+        passages = await ctx.deps.retriever.read_surrounding_chunks(chunk_id, window)
+    except Exception as exc:
+        raise RetrievalError("Filing passage lookup failed") from exc
     ctx.deps.evidence.update((passage.chunk_id, passage) for passage in passages)
+    await ctx.deps.report_progress("drafting")
     return passages

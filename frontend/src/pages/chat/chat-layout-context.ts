@@ -5,6 +5,9 @@ import type { ChatThread } from '@/lib/chat'
 export interface ChatLayoutContextValue {
   threads: ChatThread[]
   refreshThreads: () => Promise<void>
+  createConversation: () => Promise<void>
+  updateConversationTitle: (threadId: string, title: string) => Promise<void>
+  isCreating: boolean
 }
 
 export const ChatLayoutContext = createContext<ChatLayoutContextValue | null>(

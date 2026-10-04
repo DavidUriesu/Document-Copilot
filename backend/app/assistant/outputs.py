@@ -4,7 +4,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CitationRef(BaseModel):
@@ -25,14 +25,16 @@ class GroundedAnswer(BaseModel):
 class CitationView(BaseModel):
     """Validated citation metadata derived from stored corpus records."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     index: int
-    chunk_id: UUID
+    chunk_id: UUID = Field(alias="chunkId")
     excerpt: str
     ticker: str
-    company_name: str
-    filing_type: str
-    filing_date: date
-    fiscal_year: int
-    page_number: int | None
+    company_name: str = Field(alias="companyName")
+    filing_type: str = Field(alias="filingType")
+    filing_date: date = Field(alias="filingDate")
+    fiscal_year: int = Field(alias="fiscalYear")
+    page_number: int | None = Field(alias="pageNumber")
     section: str | None
-    source_url: str
+    source_url: str = Field(alias="sourceUrl")

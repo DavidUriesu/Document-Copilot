@@ -38,6 +38,7 @@ def test_turn_validates_and_persists_before_returning() -> None:
         "How did Services change?",
         [{"type": "text", "text": "How did Services change?"}],
     )
+    progress = AsyncMock()
 
     with (
         patch("app.chat.orchestrator.list_messages", AsyncMock(return_value=[])),
@@ -51,15 +52,30 @@ def test_turn_validates_and_persists_before_returning() -> None:
                 user_client=object(),
                 openai_client=object(),
                 assistant_message_id=ASSISTANT,
+                report_progress=progress,
                 agent=agent,
             )
         )
 
     assert result.message_id == ASSISTANT
     assert result.citations[0].ticker == "AAPL"
-    assert result.parts[1]["type"] == "data-citation"
+    assert result.parts[1] == {
+        "type": "data-answer-meta",
+        "data": {"status": "grounded"},
+    }
+    assert result.parts[2]["type"] == "data-citation"
+    assert result.parts[2]["data"]["companyName"] == "Apple Inc."
+    assert result.parts[2]["data"]["filingDate"] == "2025-10-31"
+    assert "company_name" not in result.parts[2]["data"]
+    assert result.answer_status == "grounded"
     limits = agent.run.await_args.kwargs["usage_limits"]
     assert limits.request_limit == MAX_AGENT_REQUESTS
     assert limits.tool_calls_limit == MAX_AGENT_TOOL_CALLS
     persist.assert_awaited_once()
     assert persist.await_args.kwargs["assistant_message_id"] == ASSISTANT
+    assert [call.args[0] for call in progress.await_args_list] == [
+        "preparing",
+        "drafting",
+        "checking",
+        "saving",
+    ]

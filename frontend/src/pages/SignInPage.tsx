@@ -1,16 +1,11 @@
 import { type FormEvent, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
+import { AuthShell } from '@/components/auth/AuthShell'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { authErrorMessage } from '@/lib/auth-errors'
 import { supabase } from '@/lib/supabase'
 
 function destination(state: unknown): string {
@@ -45,7 +40,7 @@ export function SignInPage() {
 
     setIsSubmitting(false)
     if (error) {
-      setErrorMessage(error.message)
+      setErrorMessage(authErrorMessage(error.message))
       return
     }
 
@@ -53,73 +48,36 @@ export function SignInPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <p className="text-sm font-medium text-muted-foreground">
-            Document Copilot
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-            Welcome back
-          </h1>
+    <AuthShell
+      description="Use your Driftwood email to continue to the filing research workspace."
+      footer={
+        <p>
+          Need an account?{' '}
+          <Link className="font-medium text-foreground underline underline-offset-4" to="/signup">
+            Request access
+          </Link>
+        </p>
+      }
+      title="Welcome back"
+    >
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        <div className="space-y-2">
+          <Label htmlFor="email">Work email</Label>
+          <Input id="email" name="email" type="email" autoComplete="email" required />
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Sign in</CardTitle>
-            <CardDescription>
-              Enter your email and password to continue.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
-              </div>
-
-              {errorMessage ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {errorMessage}
-                </p>
-              ) : null}
-
-              <Button
-                className="w-full"
-                size="lg"
-                type="submit"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Signing in…' : 'Sign in'}
-              </Button>
-            </form>
-
-            <p className="mt-6 text-center text-sm text-muted-foreground">
-              Need an account?{' '}
-              <Link className="font-medium text-foreground underline" to="/signup">
-                Sign up
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </main>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <Input id="password" name="password" type="password" autoComplete="current-password" required />
+        </div>
+        {errorMessage ? (
+          <p className="border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
+        <Button className="h-10 w-full" size="lg" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+    </AuthShell>
   )
 }

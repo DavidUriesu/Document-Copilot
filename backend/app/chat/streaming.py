@@ -32,6 +32,16 @@ def status_event(stage: str) -> str:
     return _event({"type": "data-status", "data": {"stage": stage}, "transient": True})
 
 
+def answer_meta_event(status: str) -> str:
+    """Encode persistent grounded-answer outcome metadata."""
+    return _event({"type": "data-answer-meta", "data": {"status": status}})
+
+
+def stream_error_event(code: str) -> str:
+    """Encode a safe transient failure category for actionable UI copy."""
+    return _event({"type": "data-error", "data": {"code": code}, "transient": True})
+
+
 def citation_event(citation: dict[str, object]) -> str:
     """Encode one persistent, validated citation part."""
     return _event({"type": "data-citation", "data": citation})

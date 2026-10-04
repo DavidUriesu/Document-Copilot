@@ -38,6 +38,7 @@ def test_chat_routes_require_authentication() -> None:
 
     assert client.get("/chat/threads").status_code == 401
     assert client.post("/chat/threads", json={"title": "Test"}).status_code == 401
+    assert client.patch(f"/chat/threads/{THREAD_ID}", json={"title": "Test"}).status_code == 401
     assert client.get(f"/chat/threads/{THREAD_ID}/messages").status_code == 401
     assert (
         client.post(
@@ -89,6 +90,30 @@ def test_create_thread_trims_title(authenticated_client: TestClient) -> None:
     assert create.await_args.args[2] == "Revenue"
 
 
+def test_update_thread_title(authenticated_client: TestClient) -> None:
+    row = {
+        "id": str(THREAD_ID),
+        "user_id": str(USER_ID),
+        "title": "Services revenue mix",
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+    update = AsyncMock(return_value=row)
+    with (
+        patch("app.api.chat._clients", AsyncMock(return_value=(object(), object()))),
+        patch("app.api.chat.get_thread_owner", AsyncMock(return_value=USER_ID)),
+        patch("app.api.chat.update_thread_title", update),
+    ):
+        response = authenticated_client.patch(
+            f"/chat/threads/{THREAD_ID}",
+            json={"title": "  Services revenue mix  "},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Services revenue mix"
+    assert update.await_args.args[2] == "Services revenue mix"
+
+
 @pytest.mark.parametrize("owner, expected_status", [(None, 404), (OTHER_USER_ID, 403)])
 def test_message_history_enforces_ownership(
     authenticated_client: TestClient, owner: UUID | None, expected_status: int
@@ -124,6 +149,48 @@ def test_load_message_history(authenticated_client: TestClient) -> None:
     assert response.json()[0]["threadId"] == str(THREAD_ID)
 
 
+def test_load_message_history_normalizes_stored_citation_fields(
+    authenticated_client: TestClient,
+) -> None:
+    row = {
+        "id": "031b934a-0494-48c6-a276-02bdb57b9fa3",
+        "thread_id": str(THREAD_ID),
+        "role": "assistant",
+        "sequence_number": 1,
+        "content": "Grounded answer [1]",
+        "parts": [
+            {
+                "type": "data-citation",
+                "data": {
+                    "index": 1,
+                    "chunk_id": "40000000-0000-0000-0000-000000000009",
+                    "excerpt": "Services net sales increased during 2025",
+                    "ticker": "AAPL",
+                    "company_name": "Apple Inc.",
+                    "filing_type": "10-K",
+                    "filing_date": "2025-09-27",
+                    "fiscal_year": 2025,
+                    "page_number": 12,
+                    "section": "Business",
+                    "source_url": "https://example.com/apple-10-k",
+                },
+            }
+        ],
+        "created_at": NOW,
+    }
+    with (
+        patch("app.api.chat._clients", AsyncMock(return_value=(object(), object()))),
+        patch("app.api.chat.get_thread_owner", AsyncMock(return_value=USER_ID)),
+        patch("app.api.chat.list_messages", AsyncMock(return_value=[row])),
+    ):
+        response = authenticated_client.get(f"/chat/threads/{THREAD_ID}/messages")
+
+    citation = response.json()[0]["parts"][0]["data"]
+    assert citation["companyName"] == "Apple Inc."
+    assert citation["filingDate"] == "2025-09-27"
+    assert "company_name" not in citation
+
+
 def test_streams_reply_then_persists_turn(authenticated_client: TestClient) -> None:
     run_turn = AsyncMock(
         return_value=CompletedTurn(
@@ -131,6 +198,7 @@ def test_streams_reply_then_persists_turn(authenticated_client: TestClient) -> N
             answer="Grounded answer [1]",
             parts=[{"type": "text", "text": "Grounded answer [1]"}],
             citations=[],
+            answer_status="grounded",
         )
     )
     with (
@@ -160,7 +228,8 @@ def test_streams_reply_then_persists_turn(authenticated_client: TestClient) -> N
     run_turn.assert_awaited_once()
     user_message = run_turn.await_args.kwargs["user_message"]
     assert user_message.content == "My question"
-    assert '"stage":"retrieving"' in response.text
+    assert '"stage":"preparing"' in response.text
+    assert '"type":"data-answer-meta"' in response.text
     assert "Grounded answer [1]" in response.text
 
 

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 
+import { ChatHeader } from '@/components/app/ChatHeader'
 import { ThreadSidebar } from '@/components/chat/ThreadSidebar'
-import { createThread, listThreads, type ChatThread } from '@/lib/chat'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { createThread, listThreads, type ChatThread, updateThreadTitle } from '@/lib/chat'
 import { ApiError } from '@/lib/http'
+import { supabase } from '@/lib/supabase'
 import { ChatLayoutContext } from '@/pages/chat/chat-layout-context'
 
 export function ChatLayout() {
@@ -17,12 +20,10 @@ export function ChatLayout() {
     try {
       const nextThreads = await listThreads()
       setThreads(nextThreads)
+      setErrorMessage(null)
     } catch (error) {
-      setErrorMessage(
-        error instanceof ApiError
-          ? error.message
-          : 'Unable to refresh conversations',
-      )
+      if (error instanceof ApiError && error.status === 401) void supabase.auth.signOut()
+      setErrorMessage(error instanceof ApiError ? error.message : 'Unable to refresh conversations')
     }
   }, [])
 
@@ -34,6 +35,7 @@ export function ChatLayout() {
       })
       .catch((error: unknown) => {
         if (!isActive) return
+        if (error instanceof ApiError && error.status === 401) void supabase.auth.signOut()
         setErrorMessage(error instanceof ApiError ? error.message : 'Unable to load conversations')
       })
       .finally(() => {
@@ -52,29 +54,53 @@ export function ChatLayout() {
       setThreads((current) => [thread, ...current])
       navigate(`/chats/${thread.id}`)
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) void supabase.auth.signOut()
       setErrorMessage(error instanceof ApiError ? error.message : 'Unable to create a conversation')
     } finally {
       setIsCreating(false)
     }
   }
 
-  if (isLoading) {
-    return <main className="grid min-h-svh place-items-center text-sm text-muted-foreground">Loading conversations…</main>
+  async function handleTitleUpdate(threadId: string, title: string) {
+    try {
+      const updated = await updateThreadTitle(threadId, title)
+      setThreads((current) => current.map((thread) => thread.id === threadId ? updated : thread))
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) void supabase.auth.signOut()
+      setErrorMessage(error instanceof ApiError ? error.message : 'Unable to update the conversation title')
+    }
   }
 
   return (
-    <ChatLayoutContext.Provider value={{ threads, refreshThreads }}>
-      <main className="grid h-svh grid-rows-[auto_1fr] overflow-hidden md:grid-cols-[18rem_1fr] md:grid-rows-1">
-        <div className="max-h-64 md:max-h-none">
-          <ThreadSidebar threads={threads} isCreating={isCreating} onCreate={() => void handleCreate()} />
-        </div>
-        <section className="min-h-0 min-w-0">
+    <ChatLayoutContext.Provider value={{
+      threads,
+      refreshThreads,
+      createConversation: handleCreate,
+      updateConversationTitle: handleTitleUpdate,
+      isCreating,
+    }}>
+      <SidebarProvider
+        className="h-svh min-h-0 overflow-hidden"
+        style={{ '--sidebar-width': '17.5rem' } as CSSProperties}
+      >
+        <ThreadSidebar
+          threads={threads}
+          isCreating={isCreating}
+          isLoading={isLoading}
+          onCreate={() => void handleCreate()}
+        />
+        <SidebarInset className="h-svh min-h-0 min-w-0 overflow-hidden">
+          <ChatHeader />
           {errorMessage ? (
-            <p className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive" role="alert">{errorMessage}</p>
+            <p className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive" role="alert">
+              {errorMessage}
+            </p>
           ) : null}
-          <Outlet />
-        </section>
-      </main>
+          <section className="min-h-0 min-w-0 flex-1">
+            <Outlet />
+          </section>
+        </SidebarInset>
+      </SidebarProvider>
     </ChatLayoutContext.Provider>
   )
 }

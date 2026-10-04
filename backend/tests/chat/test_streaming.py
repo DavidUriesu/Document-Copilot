@@ -3,12 +3,14 @@
 import json
 
 from app.chat.streaming import (
+    answer_meta_event,
     citation_event,
     error_event,
     finish_events,
     reply_chunks,
     start_events,
     status_event,
+    stream_error_event,
     text_delta_event,
 )
 
@@ -54,6 +56,15 @@ def test_status_and_citation_parts_follow_data_protocol() -> None:
     assert _payload(citation_event({"index": 1})) == {
         "type": "data-citation",
         "data": {"index": 1},
+    }
+    assert _payload(answer_meta_event("grounded")) == {
+        "type": "data-answer-meta",
+        "data": {"status": "grounded"},
+    }
+    assert _payload(stream_error_event("grounding_failed")) == {
+        "type": "data-error",
+        "data": {"code": "grounding_failed"},
+        "transient": True,
     }
 
 

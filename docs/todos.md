@@ -155,12 +155,12 @@ Goal: grounded answers with enforced citations — the core product contract.
 
 Goal: analysts can verify every claim in one click — this is what makes the product usable.
 
-- [ ] Citation chips/links on assistant messages (company, filing type, date, page/section)
-- [ ] Source passage panel — show underlying excerpt for selected citation
-- [ ] Empty states (no threads, no corpus match)
-- [ ] Error states (auth expired, retrieval failure, grounding failure, network/CORS)
-- [ ] Loading/streaming status during assistant run
-- [ ] Verify: click a citation → see the exact passage from the filing
+- [x] Citation chips/links on assistant messages (company, filing type, date, page/section)
+- [x] Source passage panel — show underlying excerpt for selected citation
+- [x] Empty states (no threads, no corpus match)
+- [x] Error states (auth expired, retrieval failure, grounding failure, network/CORS)
+- [x] Loading/streaming status during assistant run
+- [x] Verify: click a citation → see the exact passage from the filing
 
 ---
 

@@ -1,6 +1,8 @@
 """Authenticated chat thread and streaming API."""
 
+import asyncio
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -12,16 +14,19 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from supabase import AsyncClient
 
+from app.assistant.outputs import CitationView
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.chat.messages import ChatStreamRequest, submitted_user_message
-from app.chat.orchestrator import run_chat_turn
+from app.chat.orchestrator import ChatTurnError, CompletedTurn, run_chat_turn
 from app.chat.streaming import (
+    answer_meta_event,
     citation_event,
     error_event,
     finish_events,
     reply_chunks,
     start_events,
     status_event,
+    stream_error_event,
     stream_ids,
     text_delta_event,
 )
@@ -31,6 +36,7 @@ from app.database.chats import (
     get_thread_owner,
     list_messages,
     list_threads,
+    update_thread_title,
 )
 from app.database.supabase import create_service_role_client, create_user_client
 
@@ -50,6 +56,10 @@ class ThreadCreate(BaseModel):
         if not title:
             raise ValueError("title must not be blank")
         return title
+
+
+class ThreadUpdate(ThreadCreate):
+    """Fields accepted when updating a chat thread."""
 
 
 class ThreadResponse(BaseModel):
@@ -76,6 +86,29 @@ class MessageResponse(BaseModel):
     content: str
     parts: list[dict[str, Any]] | None
     created_at: datetime = Field(alias="createdAt")
+
+    @field_validator("parts")
+    @classmethod
+    def citation_parts_use_client_field_names(
+        cls, parts: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]] | None:
+        if parts is None:
+            return None
+
+        normalized = []
+        for part in parts:
+            if part.get("type") != "data-citation":
+                normalized.append(part)
+                continue
+            normalized.append(
+                {
+                    **part,
+                    "data": CitationView.model_validate(part["data"]).model_dump(
+                        mode="json", by_alias=True
+                    ),
+                }
+            )
+        return normalized
 
 
 async def _clients(current_user: CurrentUser) -> tuple[AsyncClient, AsyncClient]:
@@ -121,6 +154,18 @@ async def add_thread(
     return await create_thread(user_client, current_user.id, body.title)
 
 
+@router.patch("/threads/{thread_id}", response_model=ThreadResponse)
+async def update_thread(
+    thread_id: UUID,
+    body: ThreadUpdate,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> dict[str, Any]:
+    """Update an owned chat thread."""
+    user_client, service_client = await _clients(current_user)
+    await _require_owner(service_client, thread_id, current_user.id)
+    return await update_thread_title(user_client, thread_id, body.title)
+
+
 @router.get("/threads/{thread_id}/messages", response_model=list[MessageResponse])
 async def read_messages(
     thread_id: UUID,
@@ -160,30 +205,72 @@ async def stream_chat(
     async def events() -> AsyncIterator[str]:
         for event in start_events(message_id, text_id):
             yield event
-        yield status_event("retrieving")
+
+        queue: asyncio.Queue[str | CompletedTurn | Exception] = asyncio.Queue(8)
+        last_stage: str | None = "preparing"
+        yield status_event("preparing")
+
+        async def report_progress(stage: str) -> None:
+            nonlocal last_stage
+            if stage == last_stage:
+                return
+            last_stage = stage
+            await queue.put(stage)
+
+        async def complete_turn() -> None:
+            try:
+                turn = await run_chat_turn(
+                    user_id=current_user.id,
+                    thread_id=thread_id,
+                    user_message=user_message,
+                    user_client=user_client,
+                    openai_client=AsyncOpenAI(api_key=settings.openai_api_key),
+                    assistant_message_id=UUID(message_id),
+                    report_progress=report_progress,
+                )
+                await queue.put(turn)
+            except Exception as exc:  # noqa: BLE001 - handed to stream boundary
+                await queue.put(exc)
+
+        task = asyncio.create_task(complete_turn())
         try:
-            turn = await run_chat_turn(
-                user_id=current_user.id,
-                thread_id=thread_id,
-                user_message=user_message,
-                user_client=user_client,
-                openai_client=AsyncOpenAI(api_key=settings.openai_api_key),
-                assistant_message_id=UUID(message_id),
-            )
+            while True:
+                item = await queue.get()
+                if isinstance(item, str):
+                    yield status_event(item)
+                    continue
+                if isinstance(item, Exception):
+                    raise item
+                turn = item
+                break
+
             for chunk in reply_chunks(turn.answer):
                 yield text_delta_event(text_id, chunk)
+            yield answer_meta_event(turn.answer_status)
             for citation in turn.citations:
-                yield citation_event(citation.model_dump(mode="json"))
+                yield citation_event(
+                    citation.model_dump(mode="json", by_alias=True)
+                )
             for event in finish_events(text_id):
                 yield event
-        except Exception:  # noqa: BLE001 - streaming boundary must emit a safe error
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        except Exception as exc:  # noqa: BLE001 - streaming boundary must emit a safe error
             await logger.aexception(
                 "grounded_chat_turn_failed",
                 thread_id=str(thread_id),
                 user_id=str(current_user.id),
             )
+            code = exc.code if isinstance(exc, ChatTurnError) else "unexpected_failed"
+            yield stream_error_event(code)
             yield error_event()
             yield "data: [DONE]\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
     return StreamingResponse(
         events(),
