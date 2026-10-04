@@ -47,13 +47,14 @@ Install these before setting up `backend/` or `frontend/`:
 
 You also need accounts/keys for external services once the app is wired up. Start with [docs/guides/supabase-setup.md](docs/guides/supabase-setup.md) (account + project), then create an [OpenAI API key](https://platform.openai.com/api-keys) when the LLM layer is wired up.
 
-## Running locally
+## Setup guides
 
-To be added during the build. Setup guides:
+Use the service guides for local development and the Railway guide for production:
 
 - [Supabase](docs/guides/supabase-setup.md) — account, hosted project (dashboard or CLI)
 - [Backend](docs/guides/backend-setup.md)
 - [Frontend](docs/guides/frontend-setup.md)
+- [Railway deployment](docs/guides/railway-deployment.md) — production services, variables, migrations, and smoke tests
 
 ## Sample SEC data
 
