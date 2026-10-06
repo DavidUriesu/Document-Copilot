@@ -166,7 +166,38 @@ def test_transient_supabase_jwt_clock_skew_is_retried() -> None:
 
     assert results[0].chunk_id == UUID(CHUNK_ID)
     assert call.attempts == 2
-    sleep.assert_awaited_once_with(1.0)
+    sleep.assert_awaited_once_with(0.5)
+
+
+def test_statement_timeout_is_retried() -> None:
+    class FlakyRpcCall:
+        attempts = 0
+
+        async def execute(self) -> Response:
+            self.attempts += 1
+            if self.attempts == 1:
+                raise APIError(
+                    {
+                        "message": "canceling statement due to statement timeout",
+                        "code": "57014",
+                        "hint": None,
+                        "details": None,
+                    }
+                )
+            return Response([ranked_row()])
+
+    call = FlakyRpcCall()
+    client = FakeClient([])
+    client.rpc = lambda _name, _params: call
+
+    with patch("app.retrieval.queries.asyncio.sleep", AsyncMock()) as sleep:
+        results = asyncio.run(
+            full_text_search(client, "query", RetrievalFilters(), 10)
+        )
+
+    assert results[0].chunk_id == UUID(CHUNK_ID)
+    assert call.attempts == 2
+    sleep.assert_awaited_once_with(0.5)
 
 
 def test_other_api_errors_are_not_retried() -> None:

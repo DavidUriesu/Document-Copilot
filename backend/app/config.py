@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     openai_chat_model: str = Field(min_length=1)
     openai_embedding_model: str = Field(default="text-embedding-3-small", min_length=1)
     openai_embedding_dimensions: int = Field(default=1536, gt=0)
+    openai_request_timeout_seconds: float = Field(default=60, gt=0, le=300)
+
+    chat_turn_timeout_seconds: float = Field(default=180, gt=0, le=600)
+    chat_history_message_limit: int = Field(default=40, ge=2, le=200)
 
     allowed_origins: Annotated[list[str], NoDecode]
 

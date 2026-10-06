@@ -60,7 +60,7 @@ def format_evidence(position: int, passage: SourcePassage, limit: int) -> str:
 
 def format_result(
     answer: GroundedAnswer,
-    evidence: dict[UUID, SourcePassage],
+    evidence: dict[str, SourcePassage],
     evidence_chars: int,
 ) -> str:
     citations = validate_grounded_answer(answer, evidence)

@@ -61,12 +61,28 @@ passage:
 uv run python ingest/verify.py
 ```
 
+The root [README](../README.md#ingest-or-update-the-corpus) contains the full
+download, conversion, ingestion, and update sequence.
+
+## Pilot evaluation
+
+Run the ten client-brief questions against the live corpus and model:
+
+```powershell
+uv run python evals/run_client_brief.py
+```
+
+The command writes `evals/client_brief_results.json` with validated citations,
+company coverage, tool usage, progress timing, and total latency. Automatic
+checks do not replace the `human_review` field for factual usefulness.
+
 ## Maintain
 
 ```powershell
 uv add <package>       # Add a dependency
-uv run ruff check app # Lint the application
-uv run pytest         # Run tests
+uv run ruff check app ingest tests # Lint the backend
+uv run pytest -m "not integration" # Run the offline suite
+uv run pytest -m integration       # Run the live Supabase/OpenAI checks
 ```
 
 Run backend commands from `backend/`. If another virtual environment is active, run `deactivate` first and let `uv` use `backend/.venv`.

@@ -5,11 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
+import pytest
+
 from app.assistant.agent import MAX_AGENT_REQUESTS, MAX_AGENT_TOOL_CALLS
 from app.assistant.outputs import CitationRef, GroundedAnswer
 from app.chat.messages import PersistedMessage
-from app.chat.orchestrator import run_chat_turn
-from tests.grounding.test_validator import CHUNK, passage
+from app.chat.orchestrator import ChatTurnError, run_chat_turn
+from app.config import settings
+from tests.grounding.test_validator import passage
 
 USER = UUID("10000000-0000-0000-0000-000000000009")
 THREAD = UUID("20000000-0000-0000-0000-000000000009")
@@ -20,16 +23,11 @@ def test_turn_validates_and_persists_before_returning() -> None:
     output = GroundedAnswer(
         status="grounded",
         answer="Services net sales increased. [1]",
-        citations=[
-            CitationRef(
-                chunk_id=CHUNK,
-                excerpt="Services net sales increased during 2025",
-            )
-        ],
+        citations=[CitationRef(source_id="S1")],
     )
 
     async def run_agent(*args, **kwargs):
-        kwargs["deps"].evidence[CHUNK] = passage()
+        kwargs["deps"].evidence["S1"] = passage()
         return SimpleNamespace(output=output)
 
     agent = SimpleNamespace(run=AsyncMock(side_effect=run_agent))
@@ -39,9 +37,12 @@ def test_turn_validates_and_persists_before_returning() -> None:
         [{"type": "text", "text": "How did Services change?"}],
     )
     progress = AsyncMock()
+    user_client = object()
 
     with (
-        patch("app.chat.orchestrator.list_messages", AsyncMock(return_value=[])),
+        patch(
+            "app.chat.orchestrator.list_recent_messages", AsyncMock(return_value=[])
+        ) as history,
         patch("app.chat.orchestrator.append_grounded_turn", persist),
     ):
         result = asyncio.run(
@@ -49,7 +50,7 @@ def test_turn_validates_and_persists_before_returning() -> None:
                 user_id=USER,
                 thread_id=THREAD,
                 user_message=user_message,
-                user_client=object(),
+                user_client=user_client,
                 openai_client=object(),
                 assistant_message_id=ASSISTANT,
                 report_progress=progress,
@@ -73,9 +74,48 @@ def test_turn_validates_and_persists_before_returning() -> None:
     assert limits.tool_calls_limit == MAX_AGENT_TOOL_CALLS
     persist.assert_awaited_once()
     assert persist.await_args.kwargs["assistant_message_id"] == ASSISTANT
+    history.assert_awaited_once_with(
+        user_client,
+        THREAD,
+        settings.chat_history_message_limit,
+    )
     assert [call.args[0] for call in progress.await_args_list] == [
         "preparing",
         "drafting",
         "checking",
         "saving",
     ]
+
+
+def test_turn_timeout_fails_without_persisting() -> None:
+    async def run_agent(*args, **kwargs):
+        await asyncio.sleep(1)
+
+    agent = SimpleNamespace(run=AsyncMock(side_effect=run_agent))
+    persist = AsyncMock()
+    user_message = PersistedMessage(
+        "Compare every filing",
+        [{"type": "text", "text": "Compare every filing"}],
+    )
+
+    with (
+        patch(
+            "app.chat.orchestrator.list_recent_messages", AsyncMock(return_value=[])
+        ),
+        patch("app.chat.orchestrator.append_grounded_turn", persist),
+        patch.object(settings, "chat_turn_timeout_seconds", 0.01),
+        pytest.raises(ChatTurnError, match="upstream_timeout"),
+    ):
+        asyncio.run(
+            run_chat_turn(
+                user_id=USER,
+                thread_id=THREAD,
+                user_message=user_message,
+                user_client=object(),
+                openai_client=object(),
+                assistant_message_id=ASSISTANT,
+                agent=agent,
+            )
+        )
+
+    persist.assert_not_awaited()

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.assistant.outputs import CitationView
 from app.chat.messages import PersistedMessage
-from app.database.chats import append_grounded_turn
+from app.database.chats import append_grounded_turn, list_recent_messages
 
 THREAD = UUID("20000000-0000-0000-0000-000000000001")
 USER_MESSAGE = UUID("30000000-0000-0000-0000-000000000001")
@@ -84,3 +84,38 @@ def test_append_grounded_turn_sends_messages_and_ordered_citations() -> None:
             "excerpt": "verbatim excerpt",
         }
     ]
+
+
+def test_recent_messages_are_returned_in_chronological_order() -> None:
+    rows = [
+        {"sequence_number": 5, "content": "Newest"},
+        {"sequence_number": 4, "content": "Older"},
+    ]
+
+    class Query:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def order(self, column, *, desc=False):
+            assert column == "sequence_number"
+            assert desc is True
+            return self
+
+        def limit(self, value):
+            assert value == 2
+            return self
+
+        async def execute(self):
+            return Response(rows)
+
+    class Client:
+        def table(self, name):
+            assert name == "chat_messages"
+            return Query()
+
+    result = asyncio.run(list_recent_messages(Client(), THREAD, 2))
+
+    assert [row["sequence_number"] for row in result] == [4, 5]

@@ -51,6 +51,9 @@ Add these variables to the backend service:
 | `OPENAI_CHAT_MODEL` | For example, `gpt-5-mini` |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` |
 | `OPENAI_EMBEDDING_DIMENSIONS` | `1536` |
+| `OPENAI_REQUEST_TIMEOUT_SECONDS` | `60` |
+| `CHAT_TURN_TIMEOUT_SECONDS` | `180` |
+| `CHAT_HISTORY_MESSAGE_LIMIT` | `40` |
 | `ALLOWED_ORIGINS` | The frontend Railway URL, with no trailing slash |
 
 Use the direct Supabase connection or the session pooler for `DATABASE_URL`.
@@ -127,6 +130,8 @@ Verify all of the following:
 4. Confirm the answer streams and its citations open the source passage panel.
 5. Refresh a nested chat URL to confirm SPA fallback works.
 6. Sign out and sign back in to confirm chat history persists.
+7. Run `uv run python evals/run_client_brief.py` locally against production and
+   review the generated ten-question report before opening the pilot.
 
 ## Notes
 

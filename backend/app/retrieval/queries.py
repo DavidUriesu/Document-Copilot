@@ -12,11 +12,15 @@ from supabase import AsyncClient
 
 from app.retrieval.models import ChunkWindowRow, RankedChunk, RetrievalFilters
 
-JWT_CLOCK_SKEW_RETRY_DELAYS = (1.0, 2.0, 4.0)
+RPC_RETRY_DELAYS = (0.5, 1.5)
 
 
 def _is_transient_jwt_clock_skew(exc: APIError) -> bool:
     return exc.code == "PGRST303" and exc.message == "JWT issued at future"
+
+
+def _is_transient_database_cancellation(exc: APIError) -> bool:
+    return exc.code == "57014" and "statement timeout" in exc.message
 
 
 async def _execute_rpc(
@@ -24,11 +28,14 @@ async def _execute_rpc(
     name: str,
     params: dict[str, object],
 ) -> Any:
-    for delay in JWT_CLOCK_SKEW_RETRY_DELAYS:
+    for delay in RPC_RETRY_DELAYS:
         try:
             return await client.rpc(name, params).execute()
         except APIError as exc:
-            if not _is_transient_jwt_clock_skew(exc):
+            if not (
+                _is_transient_jwt_clock_skew(exc)
+                or _is_transient_database_cancellation(exc)
+            ):
                 raise
             await asyncio.sleep(delay)
     return await client.rpc(name, params).execute()

@@ -75,6 +75,21 @@ async def list_messages(client: AsyncClient, thread_id: UUID) -> list[dict[str, 
     return response.data
 
 
+async def list_recent_messages(
+    client: AsyncClient, thread_id: UUID, limit: int
+) -> list[dict[str, Any]]:
+    """Load bounded model context while preserving complete stored history."""
+    response = await (
+        client.table("chat_messages")
+        .select(MESSAGE_FIELDS)
+        .eq("thread_id", str(thread_id))
+        .order("sequence_number", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return list(reversed(response.data))
+
+
 async def append_turn(
     client: AsyncClient,
     thread_id: UUID,

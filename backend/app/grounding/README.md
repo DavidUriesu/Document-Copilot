@@ -76,7 +76,7 @@ The model has three bounded tools:
 | Tool | Purpose | Important bound |
 | --- | --- | --- |
 | `search_filings` | Hybrid search with ticker, filing-type, and year filters | 1–12 requested seed results |
-| `read_chunk` | Re-read one chunk already present in the ledger | Cannot access an unseen UUID |
+| `read_chunk` | Re-read one chunk already present in the ledger | Cannot access an unseen source handle |
 | `read_surrounding_chunks` | Expand an already-seen chunk in its filing | Window 0–2 |
 
 Search-first access prevents the model from inventing a UUID and using it to
@@ -106,7 +106,7 @@ flowchart LR
   independent company/year searches.
 
 Dependent work remains sequential. For example, the agent must search before it
-can request neighbors for a returned chunk ID.
+can request neighbors for a returned source handle.
 
 The application does not currently run several answer-writing LLM agents in
 parallel. Doing so would require a second synthesis step and reconciliation of
@@ -118,10 +118,10 @@ Broad questions are bounded by:
 
 | Limit | Value |
 | --- | ---: |
-| Model requests per turn | 12 |
+| Model requests per turn | 20 |
 | Tool calls per turn | 20 |
 | Tool argument retries | 2 |
-| Grounded-output correction retries | 3 |
+| Grounded-output correction retries | 4 |
 
 These are safety ceilings, not targets.
 
@@ -132,24 +132,25 @@ The model returns a typed `GroundedAnswer`:
 ```text
 status: grounded | insufficient_evidence
 answer: text containing [1], [2], ... markers
-citations: ordered list of chunk IDs and verbatim excerpts
+citations: ordered list of short, run-local source IDs
 ```
 
 `validate_grounded_answer()` treats that output as untrusted. It verifies:
 
-1. Citation chunk IDs are unique.
-2. Every cited chunk exists in the current run's evidence ledger.
-3. Every excerpt is an exact substring after conservative whitespace
-   normalization.
-4. A grounded answer has at least one citation.
-5. Every `[n]` marker is in range.
-6. Every citation-list entry is used by the answer.
-7. Every substantive Markdown line has a citation marker.
-8. An insufficient-evidence answer clearly states its limitation.
+1. Citation source IDs are unique.
+2. Every source ID maps to a chunk in the current run's evidence ledger.
+3. A grounded answer has at least one citation.
+4. Every `[n]` marker is in range.
+5. Every citation-list entry is used by the answer.
+6. Every substantive Markdown line has a citation marker.
+7. An insufficient-evidence answer clearly states its limitation.
+8. Company/year endpoints implied by the question are represented in the
+   citations.
 
 Trusted display metadata—including company, filing type, date, section, SEC
-URL, and optional page—is reconstructed from the stored `SourcePassage`. The
-model cannot supply or override that metadata.
+URL, optional page, and the complete verbatim chunk—is reconstructed from the
+stored `SourcePassage`. The model cannot supply or override that metadata or
+excerpt.
 
 The validator proves provenance and citation coverage. It does not prove full
 semantic entailment: a real excerpt can still be misinterpreted. The client-
@@ -158,13 +159,13 @@ brief evaluations therefore remain necessary human checks.
 ## Retry and failure behavior
 
 The validator is registered as a PydanticAI output validator. A grounding
-violation becomes `ModelRetry`, giving the model up to three correction
-attempts. The same deterministic validator runs again in the chat orchestrator
+violation becomes `ModelRetry`, giving the model up to four correction attempts
+after the initial output. The same deterministic validator runs again in the chat orchestrator
 before persistence.
 
 Retrieval has a separate narrow retry for the intermittent Supabase/PostgREST
-`PGRST303: JWT issued at future` clock-skew error. It waits 1, 2, and 4 seconds.
-No other database error is automatically retried.
+`PGRST303: JWT issued at future` clock-skew error and PostgreSQL statement
+timeouts. It waits 0.5 and 1.5 seconds. Other database errors fail immediately.
 
 If retrieval, generation, grounding, or persistence ultimately fails:
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -15,12 +16,18 @@ from app.assistant.agent import (
     MAX_AGENT_TOOL_CALLS,
     document_agent,
 )
+from app.assistant.coverage import infer_required_ticker_years
 from app.assistant.deps import DocumentAgentDeps, ProgressReporter
 from app.assistant.outputs import CitationView, GroundedAnswer
 from app.assistant.tools import RetrievalError
 from app.chat.messages import PersistedMessage, model_history
-from app.database.chats import append_grounded_turn, list_messages
-from app.grounding.validator import GroundingError, validate_grounded_answer
+from app.config import settings
+from app.database.chats import append_grounded_turn, list_recent_messages
+from app.grounding.validator import (
+    GroundingError,
+    normalize_citation_references,
+    validate_grounded_answer,
+)
 from app.retrieval.retriever import DocumentRetriever
 
 
@@ -60,32 +67,43 @@ async def run_chat_turn(
 
     progress = report_progress or ignore_progress
     await progress("preparing")
-    rows = await list_messages(user_client, thread_id)
+    rows = await list_recent_messages(
+        user_client, thread_id, settings.chat_history_message_limit
+    )
     deps = DocumentAgentDeps(
         user_id=user_id,
         thread_id=thread_id,
         retriever=DocumentRetriever(user_client, openai_client),
+        required_ticker_years=infer_required_ticker_years(user_message.content),
         report_progress=progress,
     )
     await progress("drafting")
     try:
-        result = await agent.run(
-            user_message.content,
-            deps=deps,
-            message_history=model_history(rows),
-            usage_limits=UsageLimits(
-                request_limit=MAX_AGENT_REQUESTS,
-                tool_calls_limit=MAX_AGENT_TOOL_CALLS,
-            ),
-        )
+        async with asyncio.timeout(settings.chat_turn_timeout_seconds):
+            result = await agent.run(
+                user_message.content,
+                deps=deps,
+                message_history=model_history(rows),
+                usage_limits=UsageLimits(
+                    request_limit=MAX_AGENT_REQUESTS,
+                    tool_calls_limit=MAX_AGENT_TOOL_CALLS,
+                ),
+            )
+    except TimeoutError as exc:
+        raise ChatTurnError("upstream_timeout") from exc
     except RetrievalError as exc:
         raise ChatTurnError("retrieval_failed") from exc
     except Exception as exc:
         raise ChatTurnError("upstream_failed") from exc
     output: GroundedAnswer = result.output
     await progress("checking")
+    normalize_citation_references(output)
     try:
-        citations = validate_grounded_answer(output, deps.evidence)
+        citations = validate_grounded_answer(
+            output,
+            deps.evidence,
+            deps.required_ticker_years,
+        )
     except GroundingError as exc:
         raise ChatTurnError("grounding_failed") from exc
     parts: list[dict[str, object]] = [

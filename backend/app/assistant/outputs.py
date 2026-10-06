@@ -10,8 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class CitationRef(BaseModel):
     """Model-provided reference to evidence seen during this run."""
 
-    chunk_id: UUID
-    excerpt: str = Field(min_length=1, max_length=600)
+    source_id: str = Field(pattern=r"^S[1-9]\d*$")
 
 
 class GroundedAnswer(BaseModel):

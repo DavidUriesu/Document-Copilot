@@ -23,6 +23,7 @@ export type StreamErrorCode =
   | 'retrieval_failed'
   | 'grounding_failed'
   | 'upstream_failed'
+  | 'upstream_timeout'
   | 'persistence_failed'
   | 'unexpected_failed'
 

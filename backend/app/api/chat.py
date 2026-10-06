@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from datetime import datetime
+from time import perf_counter
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -203,6 +204,12 @@ async def stream_chat(
     message_id, text_id = stream_ids()
 
     async def events() -> AsyncIterator[str]:
+        started_at = perf_counter()
+        await logger.ainfo(
+            "grounded_chat_turn_started",
+            thread_id=str(thread_id),
+            user_id=str(current_user.id),
+        )
         for event in start_events(message_id, text_id):
             yield event
 
@@ -219,15 +226,20 @@ async def stream_chat(
 
         async def complete_turn() -> None:
             try:
-                turn = await run_chat_turn(
-                    user_id=current_user.id,
-                    thread_id=thread_id,
-                    user_message=user_message,
-                    user_client=user_client,
-                    openai_client=AsyncOpenAI(api_key=settings.openai_api_key),
-                    assistant_message_id=UUID(message_id),
-                    report_progress=report_progress,
-                )
+                async with AsyncOpenAI(
+                    api_key=settings.openai_api_key,
+                    timeout=settings.openai_request_timeout_seconds,
+                    max_retries=1,
+                ) as openai_client:
+                    turn = await run_chat_turn(
+                        user_id=current_user.id,
+                        thread_id=thread_id,
+                        user_message=user_message,
+                        user_client=user_client,
+                        openai_client=openai_client,
+                        assistant_message_id=UUID(message_id),
+                        report_progress=report_progress,
+                    )
                 await queue.put(turn)
             except Exception as exc:  # noqa: BLE001 - handed to stream boundary
                 await queue.put(exc)
@@ -253,16 +265,26 @@ async def stream_chat(
                 )
             for event in finish_events(text_id):
                 yield event
+            await logger.ainfo(
+                "grounded_chat_turn_completed",
+                thread_id=str(thread_id),
+                user_id=str(current_user.id),
+                answer_status=turn.answer_status,
+                citation_count=len(turn.citations),
+                duration_ms=round((perf_counter() - started_at) * 1000),
+            )
         except asyncio.CancelledError:
             task.cancel()
             raise
         except Exception as exc:  # noqa: BLE001 - streaming boundary must emit a safe error
+            code = exc.code if isinstance(exc, ChatTurnError) else "unexpected_failed"
             await logger.aexception(
                 "grounded_chat_turn_failed",
                 thread_id=str(thread_id),
                 user_id=str(current_user.id),
+                error_code=code,
+                duration_ms=round((perf_counter() - started_at) * 1000),
             )
-            code = exc.code if isinstance(exc, ChatTurnError) else "unexpected_failed"
             yield stream_error_event(code)
             yield error_event()
             yield "data: [DONE]\n\n"

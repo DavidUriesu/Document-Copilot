@@ -37,15 +37,10 @@ def test_format_result_exposes_answer_citations_and_evidence() -> None:
     answer = GroundedAnswer(
         status="grounded",
         answer="Services net sales increased in 2025. [1]",
-        citations=[
-            CitationRef(
-                chunk_id=CHUNK_ID,
-                excerpt="Services net sales increased during 2025",
-            )
-        ],
+        citations=[CitationRef(source_id="S1")],
     )
 
-    output = format_result(answer, {CHUNK_ID: passage()}, evidence_chars=200)
+    output = format_result(answer, {"S1": passage()}, evidence_chars=200)
 
     assert "GROUNDING VALIDATION: PASSED" in output
     assert "EVIDENCE LEDGER: 1 chunks" in output

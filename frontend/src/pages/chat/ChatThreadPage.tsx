@@ -31,6 +31,7 @@ const errorCopy: Record<StreamErrorCode, { title: string; detail: string }> = {
   retrieval_failed: { title: 'Filing search failed', detail: 'The source corpus could not be searched. Retry the question.' },
   grounding_failed: { title: 'Answer could not be verified', detail: 'The draft did not meet the citation requirements. Retry or narrow the question.' },
   upstream_failed: { title: 'Research service unavailable', detail: 'The answer service did not complete the request. Try again.' },
+  upstream_timeout: { title: 'Research took too long', detail: 'The request reached its time limit. Narrow the scope or split a large comparison into smaller questions.' },
   persistence_failed: { title: 'Answer could not be saved', detail: 'No partial answer was kept. Retry the question.' },
   unexpected_failed: { title: 'Answer could not be completed', detail: 'An unexpected problem interrupted the request. Try again.' },
 }

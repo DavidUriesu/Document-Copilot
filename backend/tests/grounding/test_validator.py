@@ -6,7 +6,11 @@ from uuid import UUID
 import pytest
 
 from app.assistant.outputs import CitationRef, GroundedAnswer
-from app.grounding.validator import GroundingError, validate_grounded_answer
+from app.grounding.validator import (
+    GroundingError,
+    normalize_citation_references,
+    validate_grounded_answer,
+)
 from app.retrieval.models import SourcePassage
 
 CHUNK = UUID("00000000-0000-0000-0000-000000000001")
@@ -37,22 +41,18 @@ def grounded(**changes) -> GroundedAnswer:
     values = {
         "status": "grounded",
         "answer": "Services net sales increased in 2025. [1]",
-        "citations": [
-            CitationRef(
-                chunk_id=CHUNK,
-                excerpt="Services net sales increased during 2025",
-            )
-        ],
+        "citations": [CitationRef(source_id="S1")],
     }
     values.update(changes)
     return GroundedAnswer(**values)
 
 
 def test_valid_answer_returns_trusted_metadata() -> None:
-    views = validate_grounded_answer(grounded(), {CHUNK: passage()})
+    views = validate_grounded_answer(grounded(), {"S1": passage()})
     assert views[0].index == 1
     assert views[0].ticker == "AAPL"
     assert views[0].page_number == 31
+    assert views[0].excerpt == passage().content
 
 
 @pytest.mark.parametrize(
@@ -60,27 +60,20 @@ def test_valid_answer_returns_trusted_metadata() -> None:
     [
         (grounded(), {}, "not retrieved"),
         (
-            grounded(
-                citations=[CitationRef(chunk_id=CHUNK, excerpt="fabricated words")]
-            ),
-            {CHUNK: passage()},
-            "verbatim",
-        ),
-        (
             grounded(answer="Services increased without a marker."),
-            {CHUNK: passage()},
+            {"S1": passage()},
             "referenced",
         ),
         (
             grounded(answer="Services increased. [2]"),
-            {CHUNK: passage()},
+            {"S1": passage()},
             "out-of-range",
         ),
     ],
 )
 def test_invalid_grounding_fails_closed(
     answer: GroundedAnswer,
-    evidence: dict[UUID, SourcePassage],
+    evidence: dict[str, SourcePassage],
     message: str,
 ) -> None:
     with pytest.raises(GroundingError, match=message):
@@ -92,7 +85,35 @@ def test_uncited_substantive_paragraph_fails() -> None:
         answer="Services increased. [1]\n\nThis second factual paragraph is uncited."
     )
     with pytest.raises(GroundingError, match="substantive"):
-        validate_grounded_answer(answer, {CHUNK: passage()})
+        validate_grounded_answer(answer, {"S1": passage()})
+
+
+def test_unused_citations_are_pruned_and_markers_renumbered() -> None:
+    answer = GroundedAnswer(
+        status="grounded",
+        answer="Supported claim. [2]",
+        citations=[CitationRef(source_id="S1"), CitationRef(source_id="S2")],
+    )
+
+    normalize_citation_references(answer)
+
+    assert answer.answer == "Supported claim. [1]"
+    assert answer.citations == [CitationRef(source_id="S2")]
+
+
+def test_plain_heading_is_not_treated_as_an_uncited_claim() -> None:
+    answer = grounded(answer="Comparison:\nSupported claim. [1]")
+
+    assert validate_grounded_answer(answer, {"S1": passage()})
+
+
+def test_required_company_year_coverage_fails_closed() -> None:
+    with pytest.raises(GroundingError, match="AAPL FY2021"):
+        validate_grounded_answer(
+            grounded(),
+            {"S1": passage()},
+            frozenset({("AAPL", 2021), ("AAPL", 2025)}),
+        )
 
 
 def test_insufficient_evidence_can_have_no_citations() -> None:
