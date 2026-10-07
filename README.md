@@ -9,17 +9,52 @@ years, indexed as 8,170 chunks. Hybrid retrieval combines pgvector semantic
 search with PostgreSQL full-text search using Reciprocal Rank Fusion. Answers
 include clickable citations, and authenticated users can return to saved chats.
 
-This is a portfolio demo based on a fictional client brief. Email confirmation
-is intentionally disabled. Deployed chat, citations, navigation, and history
-have been manually verified with an existing account; email delivery has not
-been verified. The pilot's analyst time-saving target is a goal, not a measured
-result.
+Built as a portfolio project around a fictional investment research brief.
 
-## The client
+## Screenshots
 
-**Driftwood Capital** — fictional independent investment research firm. Their analysts spend half their week reading 10-Ks and 10-Qs before they can produce any original analysis. Document Copilot eats that intake work so they can skip straight to insight.
+### Deployed application
 
-Full brief: [docs/client-brief.md](docs/client-brief.md)
+Chat history, a cited answer, and the selected SEC filing passage in the live app.
+
+![Document Copilot showing a NVIDIA answer with citations and its source passage](docs/images/deployed-app.png)
+
+### System architecture
+
+The deployed services, authentication, retrieval, and corpus ingestion paths.
+
+![Document Copilot architecture showing React, FastAPI, Supabase, OpenAI, and ingestion](docs/images/system-architecture.png)
+
+## Features
+
+- **Hybrid search:** semantic and keyword retrieval combined with Reciprocal Rank Fusion.
+- **Inspectable citations:** filing metadata and source passages available from the answer.
+- **Grounding checks:** validates citation references and excerpts against retrieved evidence before releasing an answer.
+- **Persistent conversations:** email/password authentication, saved threads, and user-scoped access.
+- **Chat feedback:** progress updates during retrieval and generation, followed by streamed answer text after validation and persistence.
+- **Repeatable ingestion and deployment:** filing conversion, chunking, embeddings, Alembic migrations, and separate Dockerized Railway services.
+
+## How it works
+
+SEC filings are downloaded, parsed, chunked, and embedded into Supabase
+Postgres. For each authenticated question, FastAPI retrieves relevant passages,
+combines the search rankings, and uses a PydanticAI agent with OpenAI to draft
+an answer. The backend checks the citations, saves the conversation turn, and
+streams the result to the React app.
+
+```mermaid
+flowchart LR
+    filings[SEC filings] --> ingest[Parse, chunk, embed]
+    ingest --> db[(Supabase Postgres)]
+    ui[React app] -->|Authenticated question| api[FastAPI]
+    api -->|Hybrid retrieval and chat storage| db
+    api -->|Retrieved evidence| llm[PydanticAI / OpenAI]
+    llm --> check[Citation validation]
+    check -->|Save and stream answer| ui
+```
+
+See the [architecture](docs/architecture.md) for service boundaries and the
+[fictional client brief](docs/client-brief.md) for the research use case.
 
 ## Stack
 
@@ -55,10 +90,12 @@ Install these before setting up `backend/` or `frontend/`:
 | ---- | ------- | -------- | ------- |
 | [Python](https://www.python.org/downloads/) | 3.12+ | Backend runtime | OS package manager or python.org |
 | [uv](https://docs.astral.sh/uv/getting-started/installation/) | latest | Backend deps + `data/download.py` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| [Node.js](https://nodejs.org/) | 20+ (LTS) | Frontend toolchain | nodejs.org or `nvm install --lts` |
+| [Node.js](https://nodejs.org/) | 24 (matches Docker build) | Frontend toolchain | nodejs.org |
 | [pnpm](https://pnpm.io/installation) | latest | Frontend package manager | `corepack enable && corepack prepare pnpm@latest --activate` |
 
-You also need accounts/keys for external services once the app is wired up. Start with [docs/guides/supabase-setup.md](docs/guides/supabase-setup.md) (account + project), then create an [OpenAI API key](https://platform.openai.com/api-keys) when the LLM layer is wired up.
+You also need a Supabase project and an OpenAI API key. Start with the
+[Supabase setup guide](docs/guides/supabase-setup.md) and configure the service
+environment files below.
 
 ## Running locally
 
@@ -149,3 +186,17 @@ Replace `<accession-number>` with one value from
 skips current chunks, and removes stale trailing chunks after a complete
 document upload. `data/download.py` clears its download directory by default;
 change its scope parameters deliberately before refreshing a production corpus.
+
+## Verification and demo scope
+
+- Latest local verification: 86 backend tests passed (two integration tests
+  excluded); frontend TypeScript, lint, and production build passed.
+- The project owner manually verified deployed sign-in, answer streaming,
+  citation passages, nested-route refresh, and chat history across sessions.
+- Citation validation checks provenance and excerpt matching; it does not
+  guarantee that every generated interpretation is correct.
+- The fictional brief's analyst time-saving target has not been measured.
+
+## Acknowledgment
+
+This project builds on the [Document Copilot starter repository](https://github.com/daveebbelaar/document-copilot).
