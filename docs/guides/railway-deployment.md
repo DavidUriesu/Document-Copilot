@@ -94,6 +94,11 @@ In the Supabase dashboard under **Authentication -> URL Configuration**:
 3. Under **Authentication -> Providers -> Email**, enable email confirmation for
    production if it was disabled during development.
 
+For the current public portfolio demo, email confirmation is intentionally
+disabled by the project owner after a confirmation email did not arrive.
+Email delivery and the confirmation-link flow are not verified. The deployed
+smoke test was completed with an existing account; see `docs/todos.md` for scope.
+
 ## 6. Deploy and load the corpus
 
 Deploy the backend first. Its pre-deploy command applies the committed Alembic

@@ -170,8 +170,8 @@ Goal: 5 senior analysts can use it for a week and report ≥3 hours saved per an
 
 - [x] README "Running locally" section — copy-paste commands for backend + frontend + env vars
 - [x] Seed or document how to ingest/update the corpus
-- [ ] Smoke-test all 10 example questions from the client brief
-- [ ] Confirm chat history persists across sessions
+- [x] Smoke-test all 10 example questions from the client brief
+- [x] Confirm chat history persists across sessions
 - [x] Confirm ~40-user scale assumptions (no hardcoded single-user shortcuts)
 - [x] Basic structured logging on backend (`structlog`) for debugging failed turns
 - [x] Review latency: streaming starts within a few seconds for typical queries
@@ -180,12 +180,20 @@ Goal: 5 senior analysts can use it for a week and report ≥3 hours saved per an
 
 ## Phase 9 — Deployment (Railway)
 
-- [ ] Railway: backend service (Uvicorn, env vars, `ALLOWED_ORIGINS`)
-- [ ] Railway: frontend service (Vite build, `VITE_*` env vars at build time)
-- [ ] Supabase: re-enable email confirmation for production if disabled during dev
-- [ ] Run `alembic upgrade head` against production Supabase (direct connection)
-- [ ] Run ingestion against production database
-- [ ] End-to-end test on deployed URLs with a real Driftwood-style email account
+- [x] Prepare backend Dockerfile (Uvicorn on Railway's `PORT`, frozen production dependencies, non-root user, secrets excluded from image)
+- [x] Prepare frontend Dockerfile and Nginx SPA configuration (`VITE_*` build arguments, Railway's `PORT`, nested-route fallback)
+- [x] Document Railway service setup, production variables, Supabase Auth, migrations, ingestion, and smoke tests in [the deployment guide](guides/railway-deployment.md)
+
+The preparation above is implemented. Production checks are recorded below as
+they are confirmed; local development and Phase 8 checks alone do not establish
+production deployment.
+
+- [x] Railway: backend service (Uvicorn, env vars, `ALLOWED_ORIGINS`)
+- [x] Railway: frontend service (Vite build, `VITE_*` env vars at build time)
+- [x] Supabase: decide production email confirmation policy (intentionally disabled for this public demo; confirmation email delivery was not verified)
+- [x] Run `alembic upgrade head` against production Supabase (direct connection)
+- [x] Run ingestion against production database (confirmed: 25 filings across 5 companies and 5 years, 8,170 chunks)
+- [x] End-to-end test on deployed URLs with an existing account (user confirmed sign-in, streaming answers, citation passages, nested-route refresh, and history after sign-out/sign-in; new-account email verification excluded by the demo policy above)
 
 ---
 
