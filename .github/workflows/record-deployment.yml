@@ -15,7 +15,7 @@ jobs:
         with:
           script: |
             const repo = context.repo;
-            const environment = "generous-radiance / production";
+            const environment = "Document Copilot / production";
             const sha = "89c2993e181db1b626acb700a266c2eb429fe697";
 
             const previous = await github.paginate(
