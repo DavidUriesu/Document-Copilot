@@ -2,8 +2,6 @@
 
 A deployed full-stack AI research assistant for querying SEC filings in plain English and inspecting the source passages behind its answers.
 
-[Live demo](https://frontend-production-140e.up.railway.app/signin)
-
 The corpus contains 25 annual 10-K filings across five companies and five fiscal
 years, indexed as 8,170 chunks. Hybrid retrieval combines pgvector semantic
 search with PostgreSQL full-text search using Reciprocal Rank Fusion. Answers
