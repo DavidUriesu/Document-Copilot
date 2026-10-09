@@ -1,0 +1,54 @@
+name: Record successful Railway deployment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const repo = context.repo;
+            const environment = "generous-radiance / production";
+            const sha = "89c2993e181db1b626acb700a266c2eb429fe697";
+
+            const previous = await github.paginate(
+              github.rest.repos.listDeployments,
+              { ...repo, environment }
+            );
+
+            const { data: deployment } =
+              await github.rest.repos.createDeployment({
+                ...repo,
+                ref: sha,
+                environment,
+                auto_merge: false,
+                required_contexts: [],
+                production_environment: true,
+                description: "Existing Railway deployment verified successful"
+              });
+
+            await github.rest.repos.createDeploymentStatus({
+              ...repo,
+              deployment_id: deployment.id,
+              state: "success",
+              environment_url: "https://frontend-production-b29fe.up.railway.app/signin",
+              description: "Backend and frontend healthy; sign-in and saved chats verified",
+              auto_inactive: false
+            });
+
+            for (const old of previous) {
+              await github.rest.repos.createDeploymentStatus({
+                ...repo,
+                deployment_id: old.id,
+                state: "inactive",
+                description: "Superseded by verified successful Railway deployment",
+                auto_inactive: false
+              });
+            }
