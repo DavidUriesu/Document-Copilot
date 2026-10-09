@@ -77,8 +77,12 @@ document-copilot/
 ├── README.md           # this file
 ├── data/               # local corpus + download script (payloads gitignored)
 ├── docs/
-│   └── client-brief.md # the client one-pager
-├── backend/            # FastAPI service
+│   ├── architecture.md # service boundaries and data flow
+│   ├── client-brief.md # the client one-pager
+│   ├── guides/         # Supabase, backend, frontend, Railway setup
+│   ├── images/         # README screenshots
+│   └── phase-*.md      # implementation plans per phase
+├── backend/            # FastAPI service, ingestion, evals, tests
 └── frontend/           # React SPA (Vite)
 ```
 
