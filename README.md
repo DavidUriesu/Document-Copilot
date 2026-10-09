@@ -198,3 +198,7 @@ change its scope parameters deliberately before refreshing a production corpus.
 - Citation validation checks provenance and excerpt matching; it does not
   guarantee that every generated interpretation is correct.
 - The fictional brief's analyst time-saving target has not been measured.
+  
+## Acknowledgment
+
+This project builds on the [Document Copilot starter repository](https://github.com/daveebbelaar/document-copilot).
